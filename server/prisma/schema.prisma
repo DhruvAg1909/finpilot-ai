@@ -1,0 +1,52 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           Int           @id @default(autoincrement())
+  name         String
+  email        String        @unique
+  password     String
+  createdAt    DateTime      @default(now())
+
+  transactions Transaction[]
+  budgets      Budget[]
+  goals        Goal[]
+}
+
+model Transaction {
+  id          Int      @id @default(autoincrement())
+  title       String
+  amount      Float
+  category    String
+  type        String
+  date        DateTime @default(now())
+
+  userId      Int
+  user        User @relation(fields: [userId], references: [id])
+}
+
+model Budget {
+  id          Int      @id @default(autoincrement())
+  category    String
+  amount      Float
+
+  userId      Int
+  user        User @relation(fields: [userId], references: [id])
+}
+
+model Goal {
+  id          Int      @id @default(autoincrement())
+  title        String
+  targetAmount Float
+  savedAmount  Float    @default(0)
+
+  userId      Int
+  user        User @relation(fields: [userId], references: [id])
+}
