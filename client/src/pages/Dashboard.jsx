@@ -1,28 +1,26 @@
-import RecentTransactions from '../components/RecentTransactions'
-import Sidebar from '../components/Sidebar'
-import SummaryCard from '../components/SummaryCard'
+import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
+import Sidebar from "../components/Sidebar";
+import { getBudgets, getGoals, getTransactions } from "../services/api";
 
-function Dashboard() {
-  return (
-    <div className="dashboard-layout">
-      <Sidebar />
-
-      <main className="dashboard-main">
-        <h1>Dashboard</h1>
-        <p>Welcome back! Here's your financial overview.</p>
-
-        <div className="summary-grid">
-          <SummaryCard title="Total Balance" amount="₹84,250" />
-          <SummaryCard title="Income" amount="₹65,000" />
-          <SummaryCard title="Expenses" amount="₹31,450" />
-          <SummaryCard title="Savings" amount="₹33,550" />
-        </div>
-
-        <RecentTransactions />
-        
-      </main>
-    </div>
-  )
+const money = n => `₹${Number(n || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
+export default function Dashboard() {
+  const [transactions, setTransactions] = useState([]); const [budgets, setBudgets] = useState([]); const [goals, setGoals] = useState([]);
+  const [loading, setLoading] = useState(true); const [error, setError] = useState("");
+  useEffect(() => { (async () => { try { const [t, b, g] = await Promise.all([getTransactions(), getBudgets(), getGoals()]); setTransactions(t.transactions || []); setBudgets(b.budgets || []); setGoals(g.goals || []); } catch (e) { setError(e.message); } finally { setLoading(false); } })(); }, []);
+  const now = new Date(); const monthTransactions = transactions.filter(t => { const d = new Date(t.date); return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear(); });
+  const income = monthTransactions.filter(t => t.type === "income").reduce((s, t) => s + Number(t.amount), 0);
+  const expenses = monthTransactions.filter(t => t.type === "expense").reduce((s, t) => s + Number(t.amount), 0);
+  const balance = transactions.reduce((s, t) => s + (t.type === "income" ? Number(t.amount) : -Number(t.amount)), 0);
+  const saved = goals.reduce((s, g) => s + Number(g.savedAmount), 0);
+  const categorySpend = useMemo(() => monthTransactions.filter(t => t.type === "expense").reduce((map, t) => { map[t.category] = (map[t.category] || 0) + Number(t.amount); return map; }, {}), [monthTransactions]);
+  const topCategories = Object.entries(categorySpend).sort((a, b) => b[1] - a[1]).slice(0, 5); const maxCategory = Math.max(1, ...topCategories.map(x => x[1]));
+  const recent = transactions.slice(0, 6);
+  return <div className="dashboard-layout"><Sidebar /><main className="dashboard-main">
+    <div className="page-heading"><div><span className="eyebrow">YOUR FINANCIAL COMMAND CENTER</span><h1>Dashboard</h1><p className="muted">A clear view of your money this month.</p></div><Link className="button-primary link-button" to="/transactions">+ Add transaction</Link></div>
+    <div className="summary-grid"><article className="summary-card"><p>Current balance <span className="card-dot blue-dot" /></p><h2>{money(balance)}</h2><small>Across all recorded transactions</small></article><article className="summary-card"><p>Income this month <span className="card-dot green-dot" /></p><h2 className="positive">{money(income)}</h2><small>{monthTransactions.filter(t => t.type === "income").length} income records</small></article><article className="summary-card"><p>Expenses this month <span className="card-dot red-dot" /></p><h2 className="negative">{money(expenses)}</h2><small>{monthTransactions.filter(t => t.type === "expense").length} expense records</small></article><article className="summary-card"><p>Saved towards goals <span className="card-dot purple-dot" /></p><h2>{money(saved)}</h2><small>Across {goals.length} financial goals</small></article></div>
+    {error && <p className="form-error page-error">{error}</p>}{loading ? <section className="panel"><p className="empty-state">Loading your financial overview…</p></section> : <div className="dashboard-columns"><section className="panel"><div className="section-heading"><div><h2>Spending by category</h2><p className="muted">This month's expense breakdown.</p></div><Link className="subtle-link" to="/budgets">View budgets →</Link></div>{topCategories.length === 0 ? <p className="empty-state">No expenses recorded this month.</p> : <div className="category-bars">{topCategories.map(([category, amount]) => <div className="category-bar-row" key={category}><div className="category-bar-label"><strong>{category}</strong><span>{money(amount)}</span></div><div className="progress-track"><div className="progress-fill" style={{ width: `${amount / maxCategory * 100}%` }} /></div></div>)}</div>}</section>
+    <section className="panel"><div className="section-heading"><div><h2>Budget snapshot</h2><p className="muted">Recorded expenses vs category limits.</p></div><Link className="subtle-link" to="/budgets">Manage →</Link></div>{budgets.length === 0 ? <p className="empty-state">No budgets set up yet.</p> : <div className="snapshot-list">{budgets.slice(0, 4).map(b => { const spent = monthTransactions.filter(t => t.type === "expense" && t.category.toLowerCase() === b.category.toLowerCase()).reduce((s, t) => s + Number(t.amount), 0); const pct = Math.min(spent / Number(b.amount) * 100, 100); return <div key={b.id}><div className="snapshot-label"><strong>{b.category}</strong><span>{money(spent)} / {money(b.amount)}</span></div><div className="progress-track"><div className={`progress-fill ${spent > Number(b.amount) ? "over" : ""}`} style={{ width: `${pct}%` }} /></div></div>; })}</div>}</section></div>}
+    <section className="panel recent-panel"><div className="section-heading"><div><h2>Recent transactions</h2><p className="muted">Your latest recorded activity.</p></div><Link className="subtle-link" to="/transactions">View all →</Link></div>{loading ? <p className="empty-state">Loading…</p> : recent.length === 0 ? <p className="empty-state">No transactions found. Add your first transaction to get started.</p> : <div className="table-wrap"><table className="data-table"><thead><tr><th>Transaction</th><th>Category</th><th>Date</th><th className="align-right">Amount</th></tr></thead><tbody>{recent.map(t => <tr key={t.id}><td><strong>{t.title}</strong></td><td>{t.category}</td><td>{new Date(t.date).toLocaleDateString("en-IN")}</td><td className={`align-right amount ${t.type}`}>{t.type === "income" ? "+" : "−"}{money(t.amount)}</td></tr>)}</tbody></table></div>}</section>
+  </main></div>;
 }
-
-export default Dashboard
